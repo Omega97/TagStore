@@ -1,0 +1,10 @@
+build/
+dist/
+.venv/
+venv/
+.idea/
+.tagstore.json
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
