@@ -13,8 +13,49 @@ Paths are relative to the repo root so the spec can live in packaging/.
 import os
 
 from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.win32.versioninfo import (
+    FixedFileInfo,
+    StringFileInfo,
+    StringStruct,
+    StringTable,
+    VarFileInfo,
+    VarStruct,
+    VSVersionInfo,
+)
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(SPEC)))
+
+version_info = VSVersionInfo(
+    ffi=FixedFileInfo(
+        filevers=(0, 1, 0, 0),
+        prodvers=(0, 1, 0, 0),
+        mask=0x3F,
+        flags=0x0,
+        OS=0x40004,
+        fileType=0x1,
+        subtype=0x0,
+        date=(0, 0),
+    ),
+    kids=[
+        StringFileInfo(
+            [
+                StringTable(
+                    "040904B0",
+                    [
+                        StringStruct("CompanyName", "TagStore"),
+                        StringStruct("FileDescription", "TagStore"),
+                        StringStruct("FileVersion", "0.1.0.0"),
+                        StringStruct("InternalName", "TagStore"),
+                        StringStruct("OriginalFilename", "TagStore.exe"),
+                        StringStruct("ProductName", "TagStore"),
+                        StringStruct("ProductVersion", "0.1.0"),
+                    ],
+                )
+            ]
+        ),
+        VarFileInfo([VarStruct("Translation", [1033, 1200])]),
+    ],
+)
 
 hidden = collect_submodules("uvicorn")
 hidden += [
@@ -44,6 +85,8 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="TagStore",
+    icon=os.path.join(root, "packaging", "tagstore.ico"),
+    version=version_info,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

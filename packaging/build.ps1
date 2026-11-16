@@ -36,7 +36,8 @@ if (-not $iscc) {
     if ($cmd) { $iscc = $cmd.Source }
 }
 if (-not $iscc) {
-    Write-Error "Inno Setup 6 (ISCC.exe) was not found. The folder dist\TagStore is ready. Install Inno Setup 6 and rerun packaging\build.ps1."
+    Write-Error "Inno Setup 6 (ISCC.exe) was not found. The folder dist\TagStore is ready. Install Inno Setup 6 and rerun packaging\build.ps1." -ErrorAction Continue
+    exit 1
 }
 
 & $iscc (Join-Path $Root "packaging\installer.iss")
