@@ -214,8 +214,9 @@ class ScanJob:
             self._state["summary"] = summary
 
 
-def create_app(root_dir="."):
-    store = TagStore(root_dir)
+def create_app(root_dir=".", store=None):
+    if store is None:
+        store = TagStore(root_dir)
     job = ScanJob(store)
     lock = threading.Lock()
 
