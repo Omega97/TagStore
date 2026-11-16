@@ -12,6 +12,7 @@ opens it in a native window. PyInstaller builds this file. Developers can run::
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import logging
 import os
@@ -21,11 +22,15 @@ import threading
 import time
 import urllib.error
 import urllib.request
-import webbrowser
 from logging.handlers import RotatingFileHandler
 
 APP_NAME = "TagStore"
 HOST = "127.0.0.1"
+MUTEX_NAME = "TagStore-8F3C2A1E-6B47-4D19-9C5A-2E7B0D4F1A88"
+MB_ICONERROR = 0x00000010
+
+# Kept alive so the installer mutex is not released before the process exits.
+_mutex_handle = None
 
 
 def app_data_dir():
@@ -43,6 +48,34 @@ def config_path():
 
 def log_path():
     return os.path.join(app_data_dir(), "tagstore.log")
+
+
+def acquire_app_mutex():
+    """Hold the mutex named in packaging/installer.iss AppMutex."""
+    global _mutex_handle
+    if sys.platform != "win32":
+        return
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p)
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    _mutex_handle = kernel32.CreateMutexW(None, False, MUTEX_NAME)
+
+
+def show_error(message):
+    """Tell the user, then return. A windowed build has no console."""
+    logging.error("%s", message)
+    text = f"{message}\n\nDetails are in:\n{log_path()}"
+    if sys.platform != "win32":
+        return
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.MessageBoxW.argtypes = (
+        ctypes.c_void_p,
+        ctypes.c_wchar_p,
+        ctypes.c_wchar_p,
+        ctypes.c_uint,
+    )
+    user32.MessageBoxW.restype = ctypes.c_int
+    user32.MessageBoxW(None, text, APP_NAME, MB_ICONERROR)
 
 
 def setup_logging():
@@ -110,7 +143,7 @@ def resolve_root(cli_root):
         root = os.path.abspath(cli_root)
         if not os.path.isdir(root):
             logging.error("not a folder: %s", root)
-            raise SystemExit(1)
+            raise SystemExit(f"Not a folder: {root}")
         return root
     saved = load_last_root()
     if saved:
@@ -128,12 +161,12 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def start_server(root, port):
+def start_server(store, port):
     import uvicorn
 
     from tagstore.web import create_app
 
-    app = create_app(root)
+    app = create_app(store.root_dir, store=store)
     config = uvicorn.Config(
         app,
         host=HOST,
@@ -167,45 +200,50 @@ def open_window(url):
     webview.start(gui="edgechromium")
 
 
-def open_browser_fallback(url):
-    logging.warning(
-        "Could not open a native window. TagStore is at %s. "
-        "End TagStore from Task Manager to stop it.",
-        url,
-    )
-    webbrowser.open(url)
-    threading.Event().wait()
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Run TagStore in a desktop window.")
     parser.add_argument("--root", help="Image folder. Remembered for the next launch.")
     args = parser.parse_args(argv)
 
     setup_logging()
+    acquire_app_mutex()
     try:
         root = resolve_root(args.root)
         save_last_root(root)
+        from tagstore.errors import DatabaseLoadError
+        from tagstore.model import TagStore
+
+        try:
+            store = TagStore(root)
+        except DatabaseLoadError as exc:
+            show_error(str(exc))
+            return 1
         port = free_port()
         logging.info("starting TagStore root=%s port=%s", root, port)
-        _server, _thread = start_server(root, port)
+        _server, _thread = start_server(store, port)
         if not wait_until_up(port):
-            logging.error("server did not start on %s:%s", HOST, port)
+            show_error(f"TagStore did not start on {HOST}:{port}.")
             return 1
         url = f"http://{HOST}:{port}/"
         try:
             open_window(url)
-        except Exception:
+        except Exception as exc:
             logging.exception("native window failed")
-            open_browser_fallback(url)
+            show_error(f"Could not open the TagStore window.\n\n{exc}")
+            return 1
         return 0
     except SystemExit as exc:
         code = exc.code
+        if code in (0, None):
+            return 0
         if isinstance(code, int):
+            show_error("TagStore could not start.")
             return code
-        return 1 if code else 0
-    except Exception:
+        show_error(str(code))
+        return 1
+    except Exception as exc:
         logging.exception("TagStore failed to start")
+        show_error(f"TagStore failed to start.\n\n{exc}")
         return 1
 
 
