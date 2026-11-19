@@ -1,18 +1,31 @@
+Checked the repo (default branch is `master`, one commit, Nov 14). Here's the honest position.
 
-# TODOs
+## Status against your own milestones
 
-Milestone 2 is done, so the next gate is Milestone 3: installer plus a run on a machine that has never seen Python. Everything you just verified was on your dev box, which already has WebView2, the CRT, and .NET. That's the assumption most likely to break.
+| Milestone | State | Evidence |
+|---|---|---|
+| 1 — launcher from source | Done | `run_tagstore.py`, verified by your checklist |
+| 2 — `TagStore.exe` on your machine | Done | your table, all six rows pass |
+| 3 — installer, proven on clean Windows | **Written, not proven** | `packaging/{build.ps1, installer.iss, tagstore.spec}` exist; no test record |
+| 4 — first public release | Not started | 0 releases, 0 tags |
 
-**1. Clean-machine test before anything else.** Zip `dist\TagStore\` (the whole folder, `_internal` included), drop it into Windows Sandbox or a VM, and rerun your table. No installer needed yet — this isolates "does the bundle work" from "does the installer work". Watch specifically for: WebView2 absent, first-launch SmartScreen, and whether the Recycle Bin path still works without pywin32 (your warn file shows `send2trash.win.modern` unresolved, so you're on the ctypes legacy path — it should hold, but confirm).
+So the *code* for 0.1.0 is essentially finished. `installer.iss` already has the things people get wrong: `PrivilegesRequired=lowest`, `{localappdata}\Programs\TagStore`, `recursesubdirs` on the whole onedir, a fixed `AppId`, and an uninstaller that leaves `.tagstore.json` and `%APPDATA%\TagStore` alone. What's left is not features — it's proof and about 50 lines of hardening.
 
-**2. Fail loudly when the window can't open.** Right now a windowed build has no console, so `DatabaseLoadError` from a corrupt `.tagstore.json`, a missing WebView2, or a failed bind all exit silently. The only trace is a log the user can't find. And `open_browser_fallback` blocks on `threading.Event().wait()` forever with no way out except Task Manager. A `MessageBoxW`/`tkinter.messagebox` with the exception and the log path, before `return 1`, is a few lines and turns your worst support case into a readable one.
+**Next milestone: the Milestone 3 acceptance test, not more code.** Build the setup, install it in Windows Sandbox, rerun your six-row table plus uninstall. That single run is the gate between "works on Omar's PC" and "installable by a stranger".
 
-**3. Confirm add-tag by hand — and fix the expectation.** It wasn't confirmed, and it's the one action with an irreversible side effect: `_apply_tag_edit` calls `_append_tags_to_filenames` when `op == "add"` and `override` is false. A hand-typed tag *cannot* stay separate from the filename; `spot` typed into the box renames `red cat.png` to `red cat spot.png` on every copy of that hash. So the assertion is "the file got renamed and the tag survived a rescan", not "a tag independent of the filename". Click a tile first (`addDetailTag` returns early when `selectedHashes` is empty), then click into the input and press Enter. While you're there, decide whether a Ctrl+arrow range of 200 images silently renaming 200 files needs a confirmation.
+## Release gate, in order
 
-**4. One realistic library, inside the exe.** Three images tells you nothing about `/api/search`, which builds `result_entries` for every match and returns the full `hashes` list on each page request, or about `save()`, which rewrites the whole indented JSON on every single tag edit. Point it at 10k–50k files and time a search, a page flip, and one tag add. If that's slow, it's the thing users will call broken.
+1. **Clean install → checklist → uninstall.** Also install twice: `installer.iss` has no `CloseApplications`/`AppMutex`, so upgrading with TagStore open will hit a locked `TagStore.exe`. You'll meet this the moment you ship 0.1.1.
+2. **Loud failure.** Still the biggest support risk: windowed build, no console, `DatabaseLoadError` exits silently, and `open_browser_fallback` waits forever. One `MessageBoxW` with the exception + log path.
+3. **Add-tag by hand.** Unconfirmed, and it renames files (`_append_tags_to_filenames`). Assert the rename, not an independent tag.
+4. **One 10k–50k file library.** `/api/search` builds every entry and returns all hashes per request; `save()` rewrites the full indented JSON per tag edit.
+5. **Cosmetics that aren't cosmetic.** No `icon=`/`version=` in the spec and no `SetupIconFile` — an unversioned, iconless exe is worse for SmartScreen and AV heuristics. And the repo has no LICENSE, which for a public repo shipping bundled third-party binaries is worth fixing before the release, not after.
 
-Then the `.iss`: `PrivilegesRequired=lowest`, `{localappdata}\Programs\TagStore`, ship the whole onedir, stamp version/icon on the exe first. Add a second Start Menu entry "TagStore (choose folder)" wired to a `--pick` flag — cheap, and it removes the dead end where the only way to change folder is deleting `config.json`.
+## Two small things I noticed reading the scripts
 
-**Defer:** code signing, GitHub Actions, macOS/Linux, trimming `opentelemetry`/`pydantic.v1`. Don't exclude `setuptools` — `clr_loader.ffi` → `cffi.api` → `_shimmed_dist_utils` imports it at runtime, so pywebview dies without it.
+- `build.ps1`: the "ISCC not found" branch calls `Write-Error` but doesn't `exit`, then falls through to `& $iscc` with `$iscc` null. Add `exit 1` — you'll hit this on any machine without Inno Setup.
+- `DESIGN-DOC.md` §4 still lists the window variant and config location as *open* decisions, and §2 mentions a `cli.py` that isn't in the repo. Now that this is the public front door, record what you actually chose (variant B, `%APPDATA%`).
 
-Also: commit your table as `packaging/TESTS.md` so step 1 is a rerun, not a rewrite.
+**Still defer:** signing, GitHub Actions, dependency trimming. Add `packaging/TESTS.md` with your table so step 1 is a rerun.
+
+Rough estimate: one afternoon of verification plus the hardening above, and 0.1.0 is publishable.

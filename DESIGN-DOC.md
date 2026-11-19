@@ -1,6 +1,6 @@
 # TagStore: design doc per la distribuzione come app desktop
 
-Versione 0.1, bozza. Riassume le scelte fatte per trasformare TagStore in un'app che l'utente installa con un doppio clic, senza Python né GitHub.
+Versione 0.1. Riassume le scelte fatte per trasformare TagStore in un'app che l'utente installa con un doppio clic, senza Python né GitHub. La finestra e la posizione della configurazione sono decise. La firma del codice resta aperta.
 
 ## 1. Obiettivo
 
@@ -14,12 +14,12 @@ L'app funziona interamente in locale. Nessun dato lascia il computer dell'utente
 
 ## 2. Stato attuale
 
-- **Backend**: pacchetto Python `tagstore` con `model.py` (logica e database), `cli.py` (interfaccia a riga di comando, opzionale), `errors.py` e `web.py` (server FastAPI).
+- **Backend**: pacchetto Python `tagstore` con `model.py` (logica e database), `errors.py` e `web.py` (server FastAPI). Non c'è una CLI: `cli.py` non fa parte del repo.
 - **Frontend**: pagina singola in `tagstore/static/` (`index.html`, `app.js`, `style.css`), senza framework né build step. Parla col backend via `/api/...`.
-- **Dipendenze**: `fastapi` e `uvicorn` sono obbligatorie per la web UI. `rich` serve solo alla CLI (con fallback). `send2trash` è opzionale (eliminazione nel cestino).
-- **Dati**: `.tagstore.json` viene scritto nella cartella delle immagini. `synonyms.txt` e `banned.txt` sono file con nome relativo.
+- **Dipendenze**: `fastapi`, `uvicorn`, `send2trash` e `pywebview`. Il build esclude `rich`.
+- **Dati**: `.tagstore.json`, `synonyms.txt` e `banned.txt` stanno nella cartella delle immagini. Il launcher salva l'ultima cartella in `%APPDATA%\TagStore\config.json` e il log in `%APPDATA%\TagStore\tagstore.log`.
 - **Azioni sul sistema**: l'app rinomina ed elimina file, mostra un file in Esplora risorse (`explorer /select`) e lo apre nell'editor predefinito (`os.startfile`).
-- **Server**: si lega a `127.0.0.1`, porta 8000 di default.
+- **Server**: `python -m tagstore.web` si lega a `127.0.0.1` sulla porta 8000. L'app installata sceglie una porta libera sullo stesso indirizzo.
 
 ## 3. Decisioni prese
 
@@ -30,15 +30,13 @@ L'app funziona interamente in locale. Nessun dato lascia il computer dell'utente
 5. **Distribuzione con un installer (setup file) creato con Inno Setup**, a sua volta costruito sopra la cartella prodotta da PyInstaller.
 6. **Piattaforma iniziale: Windows.** macOS e Linux richiederebbero una build su ciascun sistema e sono fuori scope per ora.
 7. **Ogni utente esegue l'app sul proprio PC.** Il server resta su `127.0.0.1`. Non è previsto un uso in rete locale.
+8. **Finestra nativa (variante B).** `pywebview` con Edge WebView2. Chiudere la finestra chiude il processo. Se la finestra non si apre, l'app mostra un messaggio con il percorso del log e termina. Non resta un processo in attesa senza finestra.
+9. **Configurazione del launcher in `%APPDATA%\TagStore`.** `config.json` contiene `last_root`. `tagstore.log` è il log. La cartella immagini scelta al primo avvio viene riaperta dopo.
+10. **`synonyms.txt` e `banned.txt` restano nella cartella delle immagini**, accanto a `.tagstore.json`. Spostarli in `%APPDATA%` è lavoro successivo.
 
 ## 4. Decisioni aperte
 
-- **Finestra dell'app.** Due varianti, entrambe compatibili con PyInstaller:
-  - *A. Browser predefinito*: l'app apre una scheda su `http://127.0.0.1:<porta>`. È la più semplice, ma serve un modo per fermare il server (icona nella tray o spegnimento automatico quando non arrivano più richieste).
-  - *B. Finestra nativa con `pywebview`* (su Windows usa Edge WebView2): sembra un'app vera e chiudere la finestra chiude il processo. Aggiunge una dipendenza e poche righe di codice.
-  - **Raccomandazione**: B, perché risolve da sola la chiusura. Se emergono problemi con WebView2, si ricade su A.
-- **Posizione di `synonyms.txt` e `banned.txt`.** Nel codice sono nomi relativi: va verificato rispetto a quale cartella vengono risolti. Per la prima versione si lascia il comportamento attuale; spostarli in `%APPDATA%\TagStore` è un miglioramento successivo.
-- **Firma del codice.** Un certificato elimina l'avviso SmartScreen ma ha un costo. Si decide dopo i primi test con utenti reali.
+- **Firma del codice.** Un certificato elimina l'avviso SmartScreen ma ha un costo. Resta fuori da questa versione.
 
 ## 5. Architettura finale
 
@@ -47,7 +45,7 @@ TagStore.exe (launcher, senza console)
  ├─ legge la cartella immagini (ultima usata o scelta all'avvio)
  ├─ sceglie una porta libera su 127.0.0.1
  ├─ avvia uvicorn con l'app FastAPI in un thread
- └─ apre la finestra (pywebview) o il browser
+ └─ apre la finestra pywebview. Se non si apre, mostra un messaggio e termina
 ```
 
 Il frontend e il backend restano quelli attuali. Il launcher è l'unico componente nuovo.
@@ -104,7 +102,7 @@ Passi, in ordine:
 ## 9. Rischi
 
 - **Antivirus e SmartScreen**: gli eseguibili creati con PyInstaller possono essere segnalati. Si mitiga con `--onedir`, senza UPX, e segnalando i falsi positivi ai produttori. La firma del codice lo risolve del tutto.
-- **WebView2 assente su sistemi vecchi** (se si sceglie `pywebview`): Windows 10 e 11 aggiornati lo includono. Il piano B è la variante A (browser).
+- **WebView2 assente su sistemi vecchi**: Windows 10 e 11 aggiornati lo includono. Se manca, l'app mostra un messaggio e termina.
 - **Dimensione**: ci si aspetta qualche decina di MB. Va tenuta d'occhio escludendo `rich` e i moduli inutilizzati.
 - **Cartelle con molte immagini**: la scansione ha già avanzamento e annullamento. Va verificata su una cartella grande dentro l'app impacchettata.
 
