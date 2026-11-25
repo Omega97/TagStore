@@ -10,7 +10,8 @@ Checked items are in the repo and have been exercised on this PC. Open items are
 - [x] Windowed `TagStore.exe` (PyInstaller `--onedir`) and per-user installer `TagStore-Setup-0.1.0.exe` (no administrator prompt, leaves image data and `%APPDATA%\TagStore` on uninstall).
 - [x] Interactive pass of `TagStore.exe` on this PC: folder dialog, native window, scan, rename, reveal, delete, and close.
 - [x] Startup failures show a dialog with the log path, then exit. A corrupt database is reported before the server thread starts.
-- [x] Installer can see a running copy (`AppMutex`, `CloseApplications`). The exe has version 0.1.0 and an icon.
+- [x] Installer can see a running copy (`AppMutex`, `CloseApplications`). The exe has version 0.1.0 and an icon (a multi-size `.ico` generated from `icon.png`).
+- [x] `packaging/build.ps1` exits with code 1 when Inno Setup (ISCC) is not found, instead of falling through and crashing.
 - [x] MIT `LICENSE`. Design notes record the native window and the `%APPDATA%\TagStore` config.
 - [x] First git commit on `master`.
 - [x] Timed a 10,000-file library: first scan 121.6 s, search 0.08 s, one tag edit 0.06 s. The tag edit renamed the file. Search and the full JSON rewrite were left as they are.
