@@ -2,6 +2,7 @@
 
 <img src="icon.png" width="150" style="float: right; margin-left: 15px;">
 
+[Download here](https://github.com/Omega97/TagStore/releases/latest)
 TagStore tags the pictures in a folder on your computer. The tags come from the words in each file's name. Everything stays on your computer — the app talks only to `127.0.0.1`, and nothing is uploaded.
 
 ## Install
